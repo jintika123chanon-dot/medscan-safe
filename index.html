@@ -160,11 +160,8 @@ input, select {
   <div class="card">
     <h2>1. สแกน QR Code ผู้ป่วย</h2>
     <div id="reader"></div>
-    <button id="startPatientBtn" onclick="startScanner('patient')">
+    <button id="startPatientBtn" onclick="startScanner()">
       เปิดกล้องสแกน QR ผู้ป่วย
-    </button>
-    <button id="startMedBtn" class="secondary" onclick="startScanner('med')">
-      เปิดกล้องสแกน QR ยา
     </button>
     <button id="stopBtn" class="stop hidden" onclick="stopScanner()">
       ปิดกล้อง
@@ -187,14 +184,15 @@ input, select {
         และข้อมูลประจำตัวที่ข้างเตียงแล้ว
       </span>
     </label>
+
     <p class="small">
-      การสแกน QR เป็นเพียงการอ่านข้อมูล ไม่สามารถยืนยันได้เองว่าเป็นผู้ป่วย
-      ที่ตั้งใจจะตรวจสอบ
+      การสแกน QR เป็นเพียงการอ่านข้อมูล ต้องตรวจสอบตัวตนผู้ป่วยจริงทุกครั้ง
     </p>
   </div>
 
   <div id="medSection" class="card hidden">
     <h2>3. เลือกรอบเวลาการให้ยา</h2>
+
     <select id="schedule" onchange="loadMeds()">
       <option value="">-- เลือกรอบเวลา --</option>
       <option value="ก่อนอาหารเช้า">ก่อนอาหารเช้า</option>
@@ -207,18 +205,17 @@ input, select {
 
     <div id="medList"></div>
 
-    <div id="medScanInfo" class="status">
-      เลือกรายการยา แล้วกดสแกน QR Code ยา
-    </div>
-
     <div id="checkSection" class="hidden">
       <h2>4. ยืนยันการตรวจสอบ</h2>
       <div id="selectedMedInfo" class="success"></div>
+
       <input id="staffId" placeholder="รหัสผู้ตรวจสอบ">
       <input id="notes" placeholder="หมายเหตุ (ถ้ามี)">
+
       <button id="saveBtn" onclick="saveCheck()">
         บันทึกการตรวจสอบ
       </button>
+
       <p class="small">
         ระบบจะบันทึกเฉพาะผลการตรวจสอบ ไม่ใช่การยืนยันว่าได้ให้ยาแล้ว
       </p>
@@ -248,10 +245,8 @@ input, select {
   <div class="warning">
     <b>คำเตือน:</b> ระบบนี้เป็นต้นแบบเพื่อการศึกษา ใช้ข้อมูลสมมติเท่านั้น
     การแจ้งเตือนแพ้ยาเป็นเพียงการจับคู่ข้อความเบื้องต้น
-    ไม่สามารถตรวจสอบการแพ้ยาข้ามกลุ่ม ชื่อสามัญ ชื่อการค้า
-    หรือปฏิกิริยาระหว่างยาได้ครบถ้วน
     ต้องตรวจสอบประวัติแพ้ยา คำสั่งแพทย์ และหลักการบริหารยาจริงทุกครั้ง
-    ห้ามใช้ระบบนี้แทน MAR หรือระบบยืนยันตัวตนของโรงพยาบาล
+    ไม่สามารถใช้แทน MAR หรือระบบยืนยันตัวตนของโรงพยาบาลได้
   </div>
 
 </div>
@@ -261,12 +256,10 @@ const API_URL =
 "https://script.google.com/macros/s/AKfycbwma7liOFnQQ_RmAEGV5Fp9bTSlZhb4vqT7Lrc-n1-UcAJoweGmyXG1v32LTrpAoplj6w/exec";
 
 let scanner = null;
-let scanMode = "";
 let currentToken = "";
 let currentPatient = null;
 let currentMeds = [];
 let selectedMed = null;
-let scannedMedToken = "";
 let processing = false;
 
 // เรียก API ด้วย JSONP
@@ -325,23 +318,14 @@ function showMessage(elementId, message, className) {
   el.textContent = message;
 }
 
-function normalizeText(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-// เปิดกล้องในโหมดสแกนผู้ป่วยหรือยา
-async function startScanner(mode) {
+// เปิดกล้องสแกน QR ผู้ป่วยเท่านั้น
+async function startScanner() {
   try {
     if (scanner && scanner.isScanning) {
       await stopScanner();
     }
 
-    scanMode = mode;
-    setStatus(
-      mode === "patient"
-        ? "กำลังเปิดกล้องเพื่อสแกน QR ผู้ป่วย..."
-        : "กำลังเปิดกล้องเพื่อสแกน QR ยา..."
-    );
+    setStatus("กำลังเปิดกล้องเพื่อสแกน QR ผู้ป่วย...");
 
     if (!scanner) {
       scanner = new Html5Qrcode("reader");
@@ -352,29 +336,19 @@ async function startScanner(mode) {
       { fps: 10, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
         if (processing) return;
-        processing = true;
 
+        processing = true;
         await stopScanner();
         setStatus("อ่าน QR สำเร็จ กำลังตรวจสอบข้อมูล...");
 
-        if (scanMode === "patient") {
-          await findPatient(decodedText);
-        } else if (scanMode === "med") {
-          verifyMedicationQr(decodedText);
-          processing = false;
-        }
+        await findPatient(decodedText);
       }
     );
 
     document.getElementById("startPatientBtn").classList.add("hidden");
-    document.getElementById("startMedBtn").classList.add("hidden");
     document.getElementById("stopBtn").classList.remove("hidden");
 
-    setStatus(
-      mode === "patient"
-        ? "เปิดกล้องแล้ว กรุณาสแกน QR ผู้ป่วย"
-        : "เปิดกล้องแล้ว กรุณาสแกน QR ยา"
-    );
+    setStatus("เปิดกล้องแล้ว กรุณาสแกน QR ผู้ป่วย");
 
   } catch (error) {
     processing = false;
@@ -394,7 +368,6 @@ async function stopScanner() {
 
   document.getElementById("stopBtn").classList.add("hidden");
   document.getElementById("startPatientBtn").classList.remove("hidden");
-  document.getElementById("startMedBtn").classList.remove("hidden");
 }
 
 // ค้นหาผู้ป่วย
@@ -410,17 +383,13 @@ async function findPatient(token) {
     currentPatient = patient;
     currentMeds = [];
     selectedMed = null;
-    scannedMedToken = "";
 
     document.getElementById("patientInfo").textContent =
       "ชื่อ: " + (patient.fullName || "-") +
       " | HN: " + (patient.hn || "-") +
       " | เตียง: " + (patient.bed || "-");
 
-    // แสดงข้อมูลแพ้ยา โดยไม่ตีความว่าเป็นการยืนยันความปลอดภัย
-    const allergyText =
-      patient.allergies || patient.allergy || "";
-
+    const allergyText = patient.allergies || patient.allergy || "";
     const allergyBox = document.getElementById("allergyInfo");
 
     if (allergyText.trim()) {
@@ -442,13 +411,13 @@ async function findPatient(token) {
     document.getElementById("schedule").value = "";
     document.getElementById("medList").textContent =
       "กรุณาเลือกรอบเวลาให้ยา";
-    document.getElementById("medScanInfo").textContent =
-      "เลือกรายการยา แล้วกดสแกน QR Code ยา";
     document.getElementById("checkSection").classList.add("hidden");
 
     setStatus("พบข้อมูลผู้ป่วย กรุณาตรวจสอบตัวตนกับสายรัดข้อมือ");
 
   } catch (error) {
+    currentPatient = null;
+    currentToken = "";
     setStatus("ไม่พบข้อมูลผู้ป่วย: " + error.message);
   } finally {
     processing = false;
@@ -461,11 +430,8 @@ async function loadMeds() {
   const list = document.getElementById("medList");
 
   document.getElementById("checkSection").classList.add("hidden");
-  document.getElementById("medScanInfo").textContent =
-    "เลือกรายการยา แล้วสแกน QR Code ยา";
   list.textContent = "";
   selectedMed = null;
-  scannedMedToken = "";
 
   if (!schedule || !currentToken) return;
 
@@ -498,10 +464,14 @@ async function loadMeds() {
 
       radio.addEventListener("change", () => {
         selectedMed = med;
-        scannedMedToken = "";
-        document.getElementById("checkSection").classList.add("hidden");
-        document.getElementById("medScanInfo").textContent =
-          "เลือกรายการแล้ว กรุณาสแกน QR Code ของยารายการนี้";
+
+        document.getElementById("selectedMedInfo").textContent =
+          "รายการยา: " + (med.drugName || "-") +
+          " | ขนาด: " + (med.dose || "-") +
+          " | วิธีให้ยา: " + (med.route || "-") +
+          " | รอบเวลา: " + (med.schedule || "-");
+
+        updateCheckAvailability();
       });
 
       const detail = document.createElement("span");
@@ -521,75 +491,12 @@ async function loadMeds() {
   }
 }
 
-// ตรวจสอบ QR ยากับรายการยาที่เลือก
-function verifyMedicationQr(scannedToken) {
-  const token = String(scannedToken).trim();
-
-  if (!currentPatient) {
-    showMessage(
-      "medScanInfo",
-      "กรุณาสแกน QR ผู้ป่วยก่อน",
-      "danger"
-    );
-    return;
-  }
-
-  if (!selectedMed) {
-    showMessage(
-      "medScanInfo",
-      "กรุณาเลือกรายการยาก่อนสแกน QR ยา",
-      "warning"
-    );
-    return;
-  }
-
-  const expectedToken = String(selectedMed.qrToken || "").trim();
-
-  if (!expectedToken) {
-    showMessage(
-      "medScanInfo",
-      "รายการยานี้ยังไม่มี QR Token ในฐานข้อมูลตัวอย่าง",
-      "danger"
-    );
-    return;
-  }
-
-  if (token !== expectedToken) {
-    scannedMedToken = "";
-    document.getElementById("checkSection").classList.add("hidden");
-
-    showMessage(
-      "medScanInfo",
-      "QR Code ไม่ตรงกับยาที่เลือก กรุณาหยุดตรวจสอบและตรวจสอบรายการยาอีกครั้ง",
-      "danger"
-    );
-    return;
-  }
-
-  scannedMedToken = token;
-
-  showMessage(
-    "medScanInfo",
-    "QR Code ตรงกับรายการยาที่เลือกในข้อมูลจำลอง กรุณาตรวจสอบชื่อยา ขนาดยา และคำสั่งจริง",
-    "success"
-  );
-
-  document.getElementById("selectedMedInfo").textContent =
-    "รายการยา: " + selectedMed.drugName +
-    " | ขนาด: " + selectedMed.dose +
-    " | เวลา: " + selectedMed.scheduledTime;
-
-  updateCheckAvailability();
-}
-
-// แสดงปุ่มบันทึกเมื่อยืนยันตัวตนและสแกนยาตรงกัน
+// แสดงส่วนบันทึกเมื่อยืนยันตัวตนและเลือกรายการยาแล้ว
 function updateCheckAvailability() {
   const patientConfirmed =
     document.getElementById("confirmPatient").checked;
 
-  const ready =
-    Boolean(currentPatient && selectedMed && scannedMedToken);
-
+  const ready = Boolean(currentPatient && selectedMed);
   const section = document.getElementById("checkSection");
 
   if (patientConfirmed && ready) {
@@ -611,8 +518,8 @@ async function saveCheck() {
     return;
   }
 
-  if (!selectedMed || !scannedMedToken) {
-    alert("กรุณาเลือกรายการยาและสแกน QR ยาที่ตรงกันก่อน");
+  if (!selectedMed) {
+    alert("กรุณาเลือกรายการยาก่อน");
     return;
   }
 
@@ -635,7 +542,6 @@ async function saveCheck() {
       action: "check",
       token: currentToken,
       medId: selectedMed.medId,
-      medToken: scannedMedToken,
       schedule: schedule,
       staffId: staffId,
       notes: notes
@@ -649,15 +555,12 @@ async function saveCheck() {
 
     document.getElementById("staffId").value = "";
     document.getElementById("notes").value = "";
-    scannedMedToken = "";
     selectedMed = null;
 
     document.querySelectorAll('input[name="selectedMed"]')
       .forEach(radio => radio.checked = false);
 
     document.getElementById("checkSection").classList.add("hidden");
-    document.getElementById("medScanInfo").textContent =
-      "บันทึกแล้ว หากต้องการตรวจสอบรายการเดิมอีกครั้ง ให้เริ่มตรวจสอบใหม่";
 
     await loadHistory();
     await loadDashboard();
@@ -705,19 +608,12 @@ async function loadHistory() {
       const item = document.createElement("div");
       item.className = "history-item";
 
-      const date = record.timestamp || record.eventDate || "-";
-      const drug = record.drugName || "-";
-      const schedule = record.schedule || "-";
-      const staff = record.staffId || "-";
-      const resultText =
-        record.checkResult || record.resultCode || "-";
-
       item.textContent =
-        "วันที่/เวลา: " + date +
-        " | ยา: " + drug +
-        " | รอบ: " + schedule +
-        " | ผู้ตรวจสอบ: " + staff +
-        " | ผล: " + resultText;
+        "วันที่/เวลา: " + (record.timestamp || record.eventDate || "-") +
+        " | ยา: " + (record.drugName || "-") +
+        " | รอบ: " + (record.schedule || "-") +
+        " | ผู้ตรวจสอบ: " + (record.staffId || "-") +
+        " | ผล: " + (record.checkResult || record.resultCode || "-");
 
       box.appendChild(item);
     });
@@ -776,7 +672,6 @@ async function loadDashboard() {
   }
 }
 
-// โหลด Dashboard เมื่อเปิดหน้าเว็บ
 window.addEventListener("load", () => {
   loadDashboard();
 });
