@@ -1,0 +1,388 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MedScan Safe</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #eef5fb;
+  color: #183b59;
+}
+header {
+  background: #174a78;
+  color: white;
+  padding: 22px 16px;
+  text-align: center;
+}
+header h1 { margin: 0 0 6px; }
+header p { margin: 0; font-size: 14px; }
+.container {
+  max-width: 650px;
+  margin: 20px auto;
+  padding: 0 14px;
+}
+.card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow: 0 3px 12px #173d5b12;
+}
+h2 { font-size: 19px; margin-top: 0; }
+button, select, input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 9px;
+  font-size: 16px;
+  margin-top: 9px;
+}
+button {
+  border: none;
+  background: #1766a5;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+button:disabled { opacity: .5; }
+.stop { background: #b84949; }
+input, select {
+  border: 1px solid #cbd8e5;
+  background: white;
+  color: #183b59;
+}
+#reader {
+  width: 100%;
+  overflow: hidden;
+}
+.status {
+  background: #eaf3fa;
+  padding: 12px;
+  border-radius: 9px;
+  margin-top: 12px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.patient {
+  line-height: 1.9;
+  background: #f0f7fc;
+  border-radius: 10px;
+  padding: 12px;
+}
+.med {
+  border: 1px solid #d8e5ef;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 10px 0;
+}
+.med label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.6;
+}
+.med input { width: 20px; margin-top: 4px; }
+.small { font-size: 13px; color: #61788d; }
+.warning {
+  color: #8b4c12;
+  background: #fff4df;
+  padding: 12px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.hidden { display: none; }
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>MedScan Safe</h1>
+  <p>ระบบต้นแบบตรวจสอบความถูกต้องก่อนให้ยา</p>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>1. สแกน QR Code ผู้ป่วย</h2>
+    <div id="reader"></div>
+    <button id="startBtn" onclick="startScanner()">เปิดกล้องสแกน QR</button>
+    <button id="stopBtn" class="stop hidden" onclick="stopScanner()">ปิดกล้อง</button>
+    <div id="status" class="status">กรุณากดเปิดกล้องเพื่อเริ่มสแกน</div>
+  </div>
+
+  <div id="patientSection" class="card hidden">
+    <h2>2. ข้อมูลผู้ป่วย</h2>
+    <div id="patientInfo" class="patient"></div>
+    <p class="small">โปรดตรวจสอบชื่อและเลขเตียงให้ตรงกับผู้ป่วยก่อนดำเนินการ</p>
+  </div>
+
+  <div id="medSection" class="card hidden">
+    <h2>3. เลือกรอบเวลาการให้ยา</h2>
+    <select id="schedule" onchange="loadMeds()">
+      <option value="">-- เลือกรอบเวลา --</option>
+      <option value="ก่อนอาหารเช้า">ก่อนอาหารเช้า</option>
+      <option value="หลังอาหารเช้า">หลังอาหารเช้า</option>
+      <option value="หลังอาหารกลางวัน">หลังอาหารกลางวัน</option>
+      <option value="ก่อนอาหารเย็น">ก่อนอาหารเย็น</option>
+      <option value="หลังอาหารเย็น">หลังอาหารเย็น</option>
+      <option value="ก่อนนอน">ก่อนนอน</option>
+    </select>
+    <div id="medList"></div>
+
+    <div id="checkSection" class="hidden">
+      <h2>4. บันทึกการตรวจสอบ</h2>
+      <input id="staffId" placeholder="รหัสผู้ตรวจสอบ">
+      <input id="notes" placeholder="หมายเหตุ (ถ้ามี)">
+      <button onclick="saveCheck()">บันทึกการตรวจสอบ</button>
+    </div>
+  </div>
+
+  <div class="warning">
+    <b>คำเตือน:</b> ระบบนี้เป็นต้นแบบเพื่อการศึกษา ใช้ข้อมูลสมมติเท่านั้น
+    การบันทึกหมายถึงตรวจสอบข้อมูลแล้ว ไม่ใช่การยืนยันว่าได้ให้ยาแล้ว
+    ต้องตรวจสอบคำสั่งแพทย์และกระบวนการบริหารยาจริงทุกครั้ง
+  </div>
+
+</div>
+
+<script>
+const API_URL =
+"https://script.google.com/macros/s/AKfycbx2ENS-d4vvwPlXlqIwHBiuKvCUX3VuAZNhUsfswFhmn8bha2zmryhzErlK81lqCj9eoQ/exec";
+
+let scanner = null;
+let currentToken = "";
+let currentPatient = null;
+let currentMeds = [];
+let selectedMedId = "";
+let processing = false;
+
+// เรียก API ด้วย JSONP
+function callApi(params) {
+  return new Promise((resolve, reject) => {
+    const callbackName =
+      "medscanCallback_" + Date.now() + "_" +
+      Math.floor(Math.random() * 10000);
+
+    const query = new URLSearchParams({
+      ...params,
+      callback: callbackName
+    });
+
+    const script = document.createElement("script");
+    script.src = API_URL + "?" + query.toString();
+
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("หมดเวลารอ API กรุณาลองใหม่"));
+    }, 20000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (result) => {
+      cleanup();
+      if (result.success) {
+        resolve(result.data);
+      } else {
+        reject(new Error(result.error || "เกิดข้อผิดพลาด"));
+      }
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("เชื่อมต่อระบบฐานข้อมูลไม่ได้"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
+
+function setStatus(message) {
+  document.getElementById("status").textContent = message;
+}
+
+// เปิดกล้อง
+async function startScanner() {
+  try {
+    setStatus("กำลังเปิดกล้อง...");
+    if (!scanner) scanner = new Html5Qrcode("reader");
+
+    await scanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 240, height: 240 } },
+      async (decodedText) => {
+        if (processing) return;
+        processing = true;
+
+        await stopScanner();
+        setStatus("อ่าน QR สำเร็จ กำลังตรวจสอบข้อมูล...");
+        await findPatient(decodedText);
+      }
+    );
+
+    document.getElementById("startBtn").classList.add("hidden");
+    document.getElementById("stopBtn").classList.remove("hidden");
+    setStatus("เปิดกล้องแล้ว กรุณาสแกน QR Code");
+  } catch (error) {
+    processing = false;
+    setStatus("เปิดกล้องไม่ได้: " + error.message);
+  }
+}
+
+// ปิดกล้อง
+async function stopScanner() {
+  if (scanner && scanner.isScanning) {
+    try {
+      await scanner.stop();
+    } catch (e) {
+      console.log(e);
+    }
+  }
+  document.getElementById("stopBtn").classList.add("hidden");
+  document.getElementById("startBtn").classList.remove("hidden");
+}
+
+// ค้นหาผู้ป่วย
+async function findPatient(token) {
+  try {
+    currentToken = token.trim();
+    const patient = await callApi({
+      action: "patient",
+      token: currentToken
+    });
+
+    currentPatient = patient;
+
+    document.getElementById("patientInfo").textContent =
+      "ชื่อ: " + patient.fullName +
+      " | HN: " + patient.hn +
+      " | เตียง: " + patient.bed;
+
+    document.getElementById("patientSection").classList.remove("hidden");
+    document.getElementById("medSection").classList.remove("hidden");
+
+    setStatus("ตรวจสอบ QR สำเร็จ พบข้อมูลผู้ป่วย");
+    document.getElementById("schedule").value = "";
+    document.getElementById("medList").textContent =
+      "กรุณาเลือกรอบเวลาให้ยา";
+
+    document.getElementById("checkSection").classList.add("hidden");
+
+  } catch (error) {
+    setStatus("ไม่พบข้อมูลผู้ป่วย: " + error.message);
+  } finally {
+    processing = false;
+  }
+}
+
+// ดึงรายการยา
+async function loadMeds() {
+  const schedule = document.getElementById("schedule").value;
+  const list = document.getElementById("medList");
+  const checkSection = document.getElementById("checkSection");
+
+  checkSection.classList.add("hidden");
+  list.textContent = "";
+
+  if (!schedule || !currentToken) return;
+
+  list.textContent = "กำลังโหลดรายการยา...";
+
+  try {
+    const result = await callApi({
+      action: "meds",
+      token: currentToken,
+      schedule: schedule
+    });
+
+    currentMeds = result.meds;
+    list.textContent = "";
+
+    if (!currentMeds.length) {
+      list.textContent = "ไม่พบรายการยาในรอบเวลานี้";
+      return;
+    }
+
+    currentMeds.forEach((med) => {
+      const item = document.createElement("div");
+      item.className = "med";
+
+      const label = document.createElement("label");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "selectedMed";
+      radio.value = med.medId;
+
+      radio.addEventListener("change", () => {
+        selectedMedId = med.medId;
+        checkSection.classList.remove("hidden");
+      });
+
+      const detail = document.createElement("span");
+      detail.textContent =
+        med.drugName + " | " + med.dose +
+        " | " + med.route +
+        (med.notes ? " | " + med.notes : "");
+
+      label.append(radio, detail);
+      item.appendChild(label);
+      list.appendChild(item);
+    });
+
+  } catch (error) {
+    list.textContent = "โหลดรายการยาไม่สำเร็จ: " + error.message;
+  }
+}
+
+// บันทึกการตรวจสอบ
+async function saveCheck() {
+  const staffId = document.getElementById("staffId").value.trim();
+  const notes = document.getElementById("notes").value.trim();
+  const schedule = document.getElementById("schedule").value;
+
+  if (!staffId || !selectedMedId) {
+    alert("กรุณากรอกรหัสผู้ตรวจสอบและเลือกรายการยา");
+    return;
+  }
+
+  if (!confirm("ยืนยันบันทึกว่าตรวจสอบข้อมูลแล้วใช่หรือไม่?")) return;
+
+  try {
+    const result = await callApi({
+      action: "check",
+      token: currentToken,
+      medId: selectedMedId,
+      schedule: schedule,
+      staffId: staffId,
+      notes: notes
+    });
+
+    alert(result);
+    document.getElementById("staffId").value = "";
+    document.getElementById("notes").value = "";
+    selectedMedId = "";
+
+    document.querySelectorAll('input[name="selectedMed"]')
+      .forEach(radio => radio.checked = false);
+
+    document.getElementById("checkSection").classList.add("hidden");
+
+  } catch (error) {
+    alert("บันทึกไม่สำเร็จ: " + error.message);
+  }
+}
+</script>
+
+</body>
+</html>
